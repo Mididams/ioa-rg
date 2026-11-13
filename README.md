@@ -40,7 +40,7 @@ Sans la variable d’émulation, le navigateur cible **ioa-rang**. Un clic peut 
 - En cas de refus lié à une concurrence observée dans l’émulateur, une nouvelle lecture serveur doit prouver que la séquence a avancé avant un réessai borné (cinq tentatives externes maximum). Un refus sur un état inchangé est propagé.
 - Les resets conservent chronomètres, ordre de rotation et historique. Les totaux quotidiens, globaux et par hub, sont dérivés des entrées entre 7 h et 7 h à Paris, avec journées de 23/25 h.
 - Trois abonnements : état courant, événements du jour, événements de la veille. Pas de polling réseau chaque seconde ; seul le chrono local avance. Pas de double lecture initiale des événements.
-- Les horodatages enregistrés sont serveur ; l’affichage des chronos et le choix du jour dépendent de l’horloge du poste. Les postes doivent avoir une heure correcte.
+- Les horodatages enregistrés sont serveur ; l’affichage des chronos et le choix du jour utilisent `readTime` de Firestore puis une horloge monotone. Sans heure serveur fiable, les nouvelles actions sont désactivées.
 
 ## Règles et sécurité
 
@@ -66,6 +66,8 @@ Aucun déploiement Firebase, aucune publication GitHub Pages, aucun commit ni pu
 
 ## Dernière vérification avant publication
 
-Voir la dernière section de `MIGRATION-REVIEW.md` : présentation d’origine restaurée pour deux hubs, 23 tests applicatifs et 28 tests émulateur réussis, TypeScript/build/pages statiques validés. Les chemins relatifs sont compatibles avec `/ioa-rg/` ; la source distante GitHub Pages reste à confirmer (API Pages : 404). Aucun déploiement effectué.
+La présentation est adaptée à deux hubs. `npm test` inclut les 23 tests applicatifs et les 11 tests d’initialisation avec réseau simulé ; les 28 tests de règles sont exécutés séparément sur l’émulateur. Les chemins relatifs sont compatibles avec `/ioa-rg/`. Le 13 novembre 2026, l’API GitHub authentifiée a confirmé que Pages sert la branche `main`, dossier racine `/`, du dépôt `Mididams/ioa-rg`.
+
+Le document `runtime/current` a été initialisé et les règles Firestore publiées sur `ioa-rang/(default)`, après autorisations distinctes ; voir `INITIALIZATION.md`. La publication de l’application et tout nouveau commit ou push restent soumis à autorisation. `MIGRATION-REVIEW.md` conserve les bilans des étapes précédentes.
 
 Les actions en attente sont désormais conservées dans `sessionStorage` jusqu’à confirmation, y compris après rechargement du même onglet. L’heure affichée est calée sur `readTime` de Firestore puis avancée avec une horloge monotone ; voir le rapport pour les limites et les lectures supplémentaires.
