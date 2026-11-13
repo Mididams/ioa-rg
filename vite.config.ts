@@ -16,7 +16,7 @@ export default defineConfig(({ command }) => ({
   build: {
     lib: {
       entry: "main.tsx",
-      name: "IoaUrm",
+      name: "IoaRangueil",
       formats: ["iife"],
       fileName: () => "app.js",
     },

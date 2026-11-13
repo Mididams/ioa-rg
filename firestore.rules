@@ -1,0 +1,135 @@
+rules_version = '2';
+
+// Public aggregate data only; no Firebase Auth or patient data.
+// runtime/current is provisioned by an administrator; events are immutable.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isEntry() {
+      return request.resource.data.hub is int && request.resource.data.kind == 'entry' &&
+        request.resource.data.hub in [1, 2];
+    }
+
+    function isReset() {
+      return request.resource.data.hub is int && request.resource.data.kind == 'reset' &&
+        request.resource.data.hub in [0, 1, 2];
+    }
+
+    function validEvent(requestId) {
+      return request.resource.data.keys().hasOnly(['requestId', 'kind', 'hub', 'seq', 'at']) &&
+        request.resource.data.requestId is string &&
+        request.resource.data.requestId.size() > 10 &&
+        request.resource.data.requestId.size() < 100 &&
+        request.resource.data.requestId == requestId &&
+        (isEntry() || isReset()) &&
+        request.resource.data.seq is int &&
+        request.resource.data.seq > 0 &&
+        request.resource.data.at == request.time;
+    }
+
+    function validNullableNumber(value) {
+      return value == null || (value is int && value >= 0);
+    }
+
+    function validNullableTimestamp(value) {
+      return value == null || value is timestamp;
+    }
+
+    function validState() {
+      return request.resource.data.keys().hasOnly([
+          'seq', 'lastRequestId', 'lastKind', 'lastHub', 'lastAt', 'globalResetAt',
+          'hub1Count', 'hub1LastSeq', 'hub1LastAt', 'hub1ResetAt',
+          'hub2Count', 'hub2LastSeq', 'hub2LastAt', 'hub2ResetAt'
+        ]) &&
+        request.resource.data.seq is int && request.resource.data.seq >= 0 && request.resource.data.seq <= 9007199254740991 &&
+        request.resource.data.lastRequestId is string && request.resource.data.lastRequestId.size() < 100 &&
+        (request.resource.data.lastKind == null || request.resource.data.lastKind in ['entry', 'reset']) &&
+        (request.resource.data.lastHub == null || request.resource.data.lastHub in [0, 1, 2]) &&
+        validNullableTimestamp(request.resource.data.lastAt) &&
+        validNullableTimestamp(request.resource.data.globalResetAt) &&
+        request.resource.data.hub1Count is int && request.resource.data.hub1Count >= 0 &&
+        request.resource.data.hub2Count is int && request.resource.data.hub2Count >= 0 &&
+        validNullableNumber(request.resource.data.hub1LastSeq) &&
+        validNullableNumber(request.resource.data.hub2LastSeq) &&
+        validNullableTimestamp(request.resource.data.hub1LastAt) &&
+        validNullableTimestamp(request.resource.data.hub2LastAt) &&
+        validNullableTimestamp(request.resource.data.hub1ResetAt) &&
+        validNullableTimestamp(request.resource.data.hub2ResetAt);
+    }
+
+    function eventMatchesState() {
+      let event = getAfter(/databases/$(database)/documents/events/$(request.resource.data.lastRequestId));
+      return !exists(/databases/$(database)/documents/events/$(request.resource.data.lastRequestId)) && event != null &&
+        event.data.requestId == request.resource.data.lastRequestId &&
+        event.data.kind == request.resource.data.lastKind &&
+        event.data.hub == request.resource.data.lastHub &&
+        event.data.seq == request.resource.data.seq &&
+        event.data.at == request.time;
+    }
+
+    function validEntryTransition() {
+      return request.resource.data.lastKind == 'entry' &&
+        request.resource.data.lastHub in [1, 2] &&
+        request.resource.data.lastAt == request.time &&
+        request.resource.data.globalResetAt == resource.data.globalResetAt &&
+        request.resource.data.hub1ResetAt == resource.data.hub1ResetAt &&
+        request.resource.data.hub2ResetAt == resource.data.hub2ResetAt &&
+        (request.resource.data.lastHub == 1
+          ? request.resource.data.hub1Count == resource.data.hub1Count + 1 &&
+            request.resource.data.hub2Count == resource.data.hub2Count &&
+            request.resource.data.hub1LastSeq == request.resource.data.seq &&
+            request.resource.data.hub1LastAt == request.time &&
+            request.resource.data.hub2LastSeq == resource.data.hub2LastSeq &&
+            request.resource.data.hub2LastAt == resource.data.hub2LastAt
+          : request.resource.data.hub2Count == resource.data.hub2Count + 1 &&
+            request.resource.data.hub1Count == resource.data.hub1Count &&
+            request.resource.data.hub2LastSeq == request.resource.data.seq &&
+            request.resource.data.hub2LastAt == request.time &&
+            request.resource.data.hub1LastSeq == resource.data.hub1LastSeq &&
+            request.resource.data.hub1LastAt == resource.data.hub1LastAt);
+    }
+
+    function validResetTransition() {
+      return request.resource.data.lastKind == 'reset' &&
+        request.resource.data.lastHub in [0, 1, 2] &&
+        request.resource.data.lastAt == request.time &&
+        request.resource.data.hub1LastSeq == resource.data.hub1LastSeq &&
+        request.resource.data.hub1LastAt == resource.data.hub1LastAt &&
+        request.resource.data.hub2LastSeq == resource.data.hub2LastSeq &&
+        request.resource.data.hub2LastAt == resource.data.hub2LastAt &&
+        (request.resource.data.lastHub == 0
+          ? request.resource.data.hub1Count == 0 && request.resource.data.hub2Count == 0 &&
+            request.resource.data.globalResetAt == request.time &&
+            request.resource.data.hub1ResetAt == request.time && request.resource.data.hub2ResetAt == request.time
+          : request.resource.data.lastHub == 1
+            ? request.resource.data.hub1Count == 0 && request.resource.data.hub2Count == resource.data.hub2Count &&
+              request.resource.data.globalResetAt == resource.data.globalResetAt &&
+              request.resource.data.hub1ResetAt == request.time && request.resource.data.hub2ResetAt == resource.data.hub2ResetAt
+            : request.resource.data.hub2Count == 0 && request.resource.data.hub1Count == resource.data.hub1Count &&
+              request.resource.data.globalResetAt == resource.data.globalResetAt &&
+              request.resource.data.hub2ResetAt == request.time && request.resource.data.hub1ResetAt == resource.data.hub1ResetAt);
+    }
+
+    match /runtime/current {
+      allow get: if true;
+      allow list: if false;
+      allow create: if false;
+      allow delete: if false;
+      allow update: if validState() &&
+        request.resource.data.seq == resource.data.seq + 1 &&
+        request.resource.data.lastRequestId != resource.data.lastRequestId &&
+        eventMatchesState() &&
+        (validEntryTransition() || validResetTransition());
+    }
+
+    match /events/{requestId} {
+      allow get, list: if true;
+      allow update, delete: if false;
+      allow create: if validEvent(requestId) &&
+        !exists(/databases/$(database)/documents/events/$(requestId)) &&
+        getAfter(/databases/$(database)/documents/runtime/current).data.seq == request.resource.data.seq &&
+        getAfter(/databases/$(database)/documents/runtime/current).data.lastRequestId == requestId &&
+        getAfter(/databases/$(database)/documents/runtime/current).data.lastKind == request.resource.data.kind &&
+        getAfter(/databases/$(database)/documents/runtime/current).data.lastHub == request.resource.data.hub;
+    }
+  }
+}

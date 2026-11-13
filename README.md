@@ -1,72 +1,71 @@
-# ioa-urm
-Tableau partagé de rotation des trois hubs des urgences — IOA URM
+# IOA Rangueil — deux hubs
 
-## Ouvrir l’application
+Application React/TypeScript du dépôt `ioa-rg`, connectée exclusivement à Firestore sur `ioa-rang`. Aucun import ni initialisation Firebase Auth, aucune connexion utilisateur ou anonyme, aucune connexion Supabase active.
 
-Ouvrir `index.html` directement ou avec Live Server. La page charge `app.js`,
-le fichier JavaScript compilé fourni dans le dépôt, et `style.css`.
+## Développement et vérification
 
-## Modifier le code en local
-
-Prérequis : Node.js 22.12 ou plus récent.
+Prérequis : Node.js >= 22.12, Java 21 pour l’émulateur et Firebase CLI (version testée : 15.36.0).
 
 ```powershell
-cd ioa-urm
-npm install
+npm ci
+npm test
+npm run typecheck
+npm run test:emulator
+npm run build
+npm run test:static
+```
+
+`npm test` exécute les tests applicatifs. `test:emulator` démarre et arrête Firestore Emulator, charge les règles et exécute les tests de sécurité sur **demo-ioa-rang**, jamais sur la production. La suite de sécurité refuse de fonctionner sans `FIRESTORE_EMULATOR_HOST`. Si Java 8 est sélectionné par Windows, placer le dossier `bin` de Java 21 en tête de `PATH`.
+
+Pour manipuler une base locale :
+
+```powershell
+firebase emulators:start --only firestore --project demo-ioa-rang
+# Dans un second terminal, une fois seulement :
+node scripts/seed-emulator.mjs
+$env:VITE_USE_FIREBASE_EMULATOR='true'
 npm run dev
 ```
 
-Ouvrir l’adresse affichée dans le terminal (habituellement http://127.0.0.1:5173).
-Modifier `App.tsx` ou `style.css` : le navigateur actualise l’application.
-Pour retrouver les modifications TypeScript dans Live Server ou en ouvrant
-`index.html` directement, lancer `npm run build` puis recharger la page.
+Le script d’initialisation est limité à 127.0.0.1 et au projet fictif. Il refuse d’écraser un état existant. Les tests de règles effacent uniquement cette base fictive : ne pas les lancer pendant une démonstration locale dont on veut conserver les données.
 
-## Vérifier et publier
+Sans la variable d’émulation, le navigateur cible **ioa-rang**. Un clic peut donc être une véritable écriture si les règles distantes l’autorisent. Le build produit `dist/` et actualise `app.js` à la racine ; il ne publie rien. Utiliser localhost ou HTTPS, notamment pour `crypto.randomUUID()`.
 
-```powershell
-npm test
-npm run build
-npm run preview
-```
+## Fonctionnement et modèle
 
-Publier le contenu de `dist/` sur un hébergement HTTPS : `index.html`, `app.js`
-et `style.css`. Ces trois fichiers sont aussi disponibles à la racine du projet.
-`npm run build` vérifie TypeScript, compile les sources et met à jour `app.js`
-à la racine et les fichiers de `dist/` ; `npm run preview` permet de vérifier
-le résultat localement.
+- Deux hubs (1 et 2), priorité au hub le moins récemment utilisé ; confirmation hors rotation.
+- `runtime/current` : compteurs réinitialisables, séquence, dernier événement et horodatages des deux hubs.
+- `events/{requestId}` : événement immuable `{requestId, kind, hub, seq, at}`. Un reset global utilise le hub 0 ; une entrée accepte uniquement 1 ou 2.
+- Une transaction écrit ensemble un événement et l’état courant. Les timestamps viennent de Firestore. Les réessais utilisent le même UUID, y compris après expiration de l’attente de l’interface ; une expiration ne signifie pas que la transaction a été annulée.
+- En cas de refus lié à une concurrence observée dans l’émulateur, une nouvelle lecture serveur doit prouver que la séquence a avancé avant un réessai borné (cinq tentatives externes maximum). Un refus sur un état inchangé est propagé.
+- Les resets conservent chronomètres, ordre de rotation et historique. Les totaux quotidiens, globaux et par hub, sont dérivés des entrées entre 7 h et 7 h à Paris, avec journées de 23/25 h.
+- Trois abonnements : état courant, événements du jour, événements de la veille. Pas de polling réseau chaque seconde ; seul le chrono local avance. Pas de double lecture initiale des événements.
+- Les horodatages enregistrés sont serveur ; l’affichage des chronos et le choix du jour dépendent de l’horloge du poste. Les postes doivent avoir une heure correcte.
 
-## Données partagées
+## Règles et sécurité
 
-L’URL Supabase et sa clé publique sont configurées dans la fonction `rpc` de
-`App.tsx`. Le projet existant est partagé entre les postes, y compris lors du
-développement local : les clics enregistrent de vraies entrées.
-`schema.sql` décrit l’installation initiale pour une base vide ; ne pas le
-réexécuter sur la base existante.
+Les règles locales autorisent les lectures publiques des événements et de `runtime/current`. Elles refusent les autres chemins, la création publique de l’état, les suppressions, les modifications d’événements et les transitions incohérentes. Les écritures sont liées par `getAfter()`, avec contrôles des types, champs, identifiants, séquences et dates serveur.
 
-Les compteurs des hubs cumulent toutes les entrées depuis la dernière remise à
-zéro du hub ou de tous les hubs, sans limite de 24 heures. Le total est leur somme.
-Le compteur quotidien additionne les entrées de tous les hubs depuis 7 h,
-heure de Paris ; avant 7 h, sa date de début est celle de la veille. Il repart
-automatiquement à zéro chaque jour à 7 h (visible à la prochaine actualisation,
-toutes les 2 secondes lorsque la connexion est disponible). Il ignore toutes
-les remises à zéro manuelles. Les changements d’heure sont pris en compte.
+**Sans authentification, toute personne connaissant la configuration publique peut effectuer une entrée ou une remise à zéro valide.** Les règles protègent la structure et la cohérence, pas l’identité des opérateurs ni la disponibilité face aux abus. Ne stocker aucune donnée patient. Les règles restent à relire avant diffusion générale ; les tests ne constituent pas une garantie exhaustive.
 
-`update-counters.sql` contient la mise à jour de la fonction de calcul pour une
-base existante. Elle conserve les événements et les droits d’accès existants.
-`schema.sql` contient aussi ce calcul pour les installations neuves.
+## Spark
 
-Chaque hub affiche également ses entrées de la journée de 7 h à 7 h. Le total
-de la veille correspond à la journée précédente de 7 h à 7 h, même lorsqu’aucun
-poste n’était ouvert au changement de journée. Ces totaux sont calculés depuis
-l’historique conservé en base : aucune entrée ni aucun chronomètre n’est effacé.
-La date affichée en haut est celle de la dernière réinitialisation globale ;
-chaque hub affiche sa dernière réinitialisation individuelle ou globale.
-En l’absence de réinitialisation dans l’historique, aucune date n’est inventée.
+Aucune Cloud Function, tâche planifiée payante, TTL, sauvegarde payante ou activation de facturation. Firestore Standard offre notamment 50 000 lectures/jour, 20 000 écritures/jour, 1 Gio stocké et 10 Gio de transfert sortant/mois. Les quotas gratuits ne garantissent pas que l’usage réel restera sous les limites.
 
-Un clic sur un hub autre que le prochain hub affiché demande confirmation avant
-d’enregistrer. Annuler ne crée aucune entrée.
+Chaque action produit deux écritures. Il faut compter les lectures transactionnelles, les lectures de règles, les réessais, les notifications à chaque poste et les relectures du jour/de la veille aux ouvertures et reconnexions. L’historique s’accumule ; aucune purge automatique n’est activée. Surveiller la console Usage et dimensionner selon le nombre de postes et d’entrées avant lancement. Le plafond d’écritures donne au maximum théorique 10 000 actions/jour, mais lectures et stockage peuvent limiter bien avant.
 
-La remise à zéro conserve les chronomètres, la rotation et le compteur quotidien.
-Après un échec réseau,
-« Réessayer l’enregistrement » réutilise le même identifiant pour éviter les
-doublons tant que la page reste ouverte.
+Sources : [quotas Firestore](https://firebase.google.com/docs/firestore/quotas), [comptabilisation des lectures et abonnements](https://firebase.google.com/docs/firestore/pricing).
+
+## État de migration et production
+
+Consulter `MIGRATION-REVIEW.md`. Les anciens `schema.sql` et `update-counters.sql` sont conservés comme références historiques, sans aucun appel ni exécution. Ne jamais les exécuter sur Purpan. Le dépôt `ioa-urm` et son projet Supabase sont hors périmètre.
+
+La base distante doit posséder un `runtime/current` cohérent. Pour une base réellement vide, le modèle initial figure dans `initialRuntime` de `rotation.ts` (compteurs/séquence à 0, dates nulles). Ne pas écraser un document existant. Aucun import d’historique n’a été effectué : si des données Rangueil doivent être reprises, préparer et valider un export explicitement identifié avant initialisation.
+
+Aucun déploiement Firebase, aucune publication GitHub Pages, aucun commit ni push n’est effectué par les commandes de vérification. Toute mise en production reste soumise à l’autorisation de Damien.
+
+## Dernière vérification avant publication
+
+Voir la dernière section de `MIGRATION-REVIEW.md` : présentation d’origine restaurée pour deux hubs, 23 tests applicatifs et 28 tests émulateur réussis, TypeScript/build/pages statiques validés. Les chemins relatifs sont compatibles avec `/ioa-rg/` ; la source distante GitHub Pages reste à confirmer (API Pages : 404). Aucun déploiement effectué.
+
+Les actions en attente sont désormais conservées dans `sessionStorage` jusqu’à confirmation, y compris après rechargement du même onglet. L’heure affichée est calée sur `readTime` de Firestore puis avancée avec une horloge monotone ; voir le rapport pour les limites et les lectures supplémentaires.
