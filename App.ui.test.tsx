@@ -32,6 +32,30 @@ async function mount() {
 beforeEach(() => { sessionStorage.clear(); mocks.readTime.mockReset().mockImplementation(async () => Date.now()); vi.useFakeTimers(); vi.setSystemTime(time); mocks.listeners.length = 0; mocks.record.mockReset().mockResolvedValue(undefined); });
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("Interface Rangueil", () => {
+  it("relance immédiatement le chrono pendant une écriture lente puis utilise l'heure confirmée", async () => {
+    await mount();
+    mocks.record.mockImplementationOnce(() => new Promise(() => {}));
+    await act(async () => mocks.listeners[0].callback(snapshot({ ...initialRuntime, hub1LastAt: Timestamp.fromMillis(time - 60000) })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Enregistrer une entrée dans le Hub 1" })));
+    expect(screen.getByText("00:00:00")).toBeTruthy();
+    expect(screen.getByText("Synchronisation…")).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(3000));
+    expect(screen.getByText("00:00:03")).toBeTruthy();
+    await act(async () => mocks.listeners[0].callback(snapshot({ ...initialRuntime, hub1LastSeq: 1, hub1LastAt: Timestamp.fromMillis(time + 1000) })));
+    expect(screen.getByText("00:00:02")).toBeTruthy();
+    expect(screen.queryByText("Synchronisation…")).toBeNull();
+  });
+  it("restaure le chrono confirmé si l'écriture expire", async () => {
+    await mount();
+    mocks.record.mockImplementationOnce(() => new Promise(() => {}));
+    await act(async () => mocks.listeners[0].callback(snapshot({ ...initialRuntime, hub1LastAt: Timestamp.fromMillis(time - 60000) })));
+    await act(async () => fireEvent.click(screen.getByRole("button", { name: "Enregistrer une entrée dans le Hub 1" })));
+    expect(screen.getByText("00:00:00")).toBeTruthy();
+    await act(async () => vi.advanceTimersByTimeAsync(10001));
+    expect(screen.getByText("00:01:10")).toBeTruthy();
+    expect(screen.queryByText("Synchronisation…")).toBeNull();
+    expect(screen.getByText(/Enregistrement non confirmé/)).toBeTruthy();
+  });
   it("restaure l'action après rechargement et efface son identifiant uniquement après confirmation", async () => {
     await mount(); mocks.record.mockRejectedValueOnce(new Error("uncertain"));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Enregistrer une entrée dans le Hub 1" })));

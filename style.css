@@ -12,7 +12,7 @@ body {
 }
 button {
   font: inherit;
-  cursor: pointer;
+  cursor: pointer; 
 }
 button:disabled {
   cursor: not-allowed;
@@ -224,6 +224,7 @@ p {
   gap: 20px;
 }
 .card {
+  position: relative;
   border: 1px solid var(--edge);
   border-top: 5px solid var(--accent);
   background: var(--bg);
@@ -236,6 +237,55 @@ p {
 .card:hover {
   box-shadow: 0 8px 25px #172c3b0c;
   transform: translateY(-2px);
+}
+.hub-sticker {
+  position: absolute;
+  top: 26px;
+  right: 13%;
+  width: clamp(72px, 8vw, 104px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  pointer-events: none;
+  background: var(--sticker-color);
+  box-shadow: inset 0 1px 2px #ffffff55, 0 3px 5px #172c3b20;
+  transform-origin: 65% 75%;
+}
+.hub-sticker--1 {
+  --sticker-color: #0075f5;
+}
+.hub-sticker--2 {
+  --sticker-color: #fff000;
+}
+.hub-sticker--placing {
+  animation: sticker-place 1100ms ease-out both;
+}
+@keyframes sticker-place {
+  0%, 9% {
+    opacity: 0;
+    transform: translateY(-12px) rotate(-14deg) scale(1.16);
+  }
+  24% {
+    opacity: 1;
+    transform: translateY(-8px) rotate(-10deg) scale(1.12);
+    box-shadow: inset 0 1px 2px #ffffff55, 5px 12px 14px #172c3b30;
+  }
+  76% {
+    transform: translateY(1px) rotate(2deg) scale(1.04, 0.96);
+    box-shadow: inset 0 1px 2px #ffffff55, 0 1px 2px #172c3b20;
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hub-sticker--placing {
+    animation: sticker-fade 200ms ease-out;
+  }
+  @keyframes sticker-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 }
 .green {
   --accent: #268a65;
@@ -479,6 +529,11 @@ footer b {
   border-color: #173e50;
 }
 @media (max-width: 850px) {
+  .hub-sticker {
+    top: 54px;
+    right: 12%;
+    width: 72px;
+  }
   main {
     padding: 30px 4%;
   }
