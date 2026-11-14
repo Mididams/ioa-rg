@@ -40,7 +40,7 @@ Sans la variable d’émulation, le navigateur cible **ioa-rang**. Un clic peut 
 - En cas de refus lié à une concurrence observée dans l’émulateur, une nouvelle lecture serveur doit prouver que la séquence a avancé avant un réessai borné (cinq tentatives externes maximum). Un refus sur un état inchangé est propagé.
 - Les resets conservent chronomètres, ordre de rotation et historique. Les totaux quotidiens, globaux et par hub, sont dérivés des entrées entre 7 h et 7 h à Paris, avec journées de 23/25 h.
 - Trois abonnements : état courant, événements du jour, événements de la veille. Pas de polling réseau chaque seconde ; seul le chrono local avance. Pas de double lecture initiale des événements.
-- Les horodatages enregistrés sont serveur ; l’affichage des chronos et le choix du jour utilisent `readTime` de Firestore puis une horloge monotone. Sans heure serveur fiable, les nouvelles actions sont désactivées.
+- Les horodatages enregistrés sont serveur ; l’affichage des chronos et le choix du jour utilisent l’en-tête HTTP `Date` de la réponse Firestore puis une horloge monotone. La date HTTP a une résolution d’une seconde. Le champ `readTime` est une version de lecture pouvant être ancienne : il ne sert pas d’horloge. Sans heure serveur fiable, les nouvelles actions sont désactivées. Les chronos restent basés sur les entrées confirmées, y compris pendant un enregistrement et après rechargement.
 
 ## Règles et sécurité
 
@@ -70,4 +70,4 @@ La présentation est adaptée à deux hubs. `npm test` inclut les 23 tests appli
 
 Le document `runtime/current` a été initialisé et les règles Firestore publiées sur `ioa-rang/(default)`, après autorisations distinctes ; voir `INITIALIZATION.md`. La publication de l’application et tout nouveau commit ou push restent soumis à autorisation. `MIGRATION-REVIEW.md` conserve les bilans des étapes précédentes.
 
-Les actions en attente sont désormais conservées dans `sessionStorage` jusqu’à confirmation, y compris après rechargement du même onglet. L’heure affichée est calée sur `readTime` de Firestore puis avancée avec une horloge monotone ; voir le rapport pour les limites et les lectures supplémentaires.
+Les actions en attente sont désormais conservées dans `sessionStorage` jusqu’à confirmation, y compris après rechargement du même onglet. L’heure affichée est calée sur l’en-tête HTTP `Date` du serveur puis avancée avec une horloge monotone. L’ancienne utilisation de `readTime` a été corrigée : ce champ pouvait retarder les chronos de plusieurs dizaines de secondes.

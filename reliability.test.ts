@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearPending, loadPending, pendingKey, savePending } from "./pending-action";
-import { parseReadTime, ServerClock } from "./server-clock";
+import { parseServerDate, ServerClock } from "./server-clock";
+import { readServerTime } from "./firebase";
 import { dailyWindow } from "./App.tsx";
 
 describe("Journal de l'onglet", () => {
@@ -26,9 +27,32 @@ describe("Journal de l'onglet", () => {
 });
 
 describe("Horloge serveur", () => {
-  it("utilise readTime, pas la date de modification", () => {
-    expect(parseReadTime([{ found: { updateTime: "2020-01-01T00:00:00Z" }, readTime: "2026-11-08T06:00:00Z" }])).toBe(Date.parse("2026-11-08T06:00:00Z"));
-    expect(() => parseReadTime([{ error: "denied" }])).toThrow();
+  afterEach(() => vi.unstubAllGlobals());
+  it("utilise la date HTTP actuelle même si readTime est en retard de 64 secondes", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([
+      { readTime: "2026-11-14T16:36:31.804062Z" },
+    ]), { headers: { date: "Sat, 14 Nov 2026 16:37:35 GMT" } })));
+    expect(await readServerTime()).toBe(Date.parse("2026-11-14T16:37:35.500Z"));
+  });
+  it("refuse une date HTTP absente plutôt que de revenir à readTime", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify([
+      { readTime: "2026-11-14T16:36:31.804062Z" },
+    ]))));
+    await expect(readServerTime()).rejects.toThrow("server_time_missing");
+    expect(() => parseServerDate("invalid")).toThrow();
+  });
+  it("retrouve le même temps après rechargement malgré une version de lecture inchangée", async () => {
+    const body = JSON.stringify([{ readTime: "2026-11-14T16:36:31.804062Z" }]);
+    vi.stubGlobal("fetch", vi.fn()
+      .mockResolvedValueOnce(new Response(body, { headers: { date: "Sat, 14 Nov 2026 16:37:35 GMT" } }))
+      .mockResolvedValueOnce(new Response(body, { headers: { date: "Sat, 14 Nov 2026 16:38:05 GMT" } })));
+    let mono = 0;
+    const first = new ServerClock(() => mono);
+    first.calibrate(await readServerTime(), 0, 0);
+    mono = 30000;
+    const reloaded = new ServerClock(() => 0);
+    reloaded.calibrate(await readServerTime(), 0, 0);
+    expect(reloaded.now()).toBe(first.now());
   });
   it("avance avec le temps monotone et bascule à 7 h", () => {
     let mono = 100;

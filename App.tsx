@@ -29,7 +29,6 @@ export default function Home() {
   const [dailyEvents, setDailyEvents] = useState<DocumentData[]>([]);
   const [busy, setBusy] = useState(false);
   const [stickerClicks, setStickerClicks] = useState({ 1: 0, 2: 0 });
-  const [timerPreview, setTimerPreview] = useState<{ hub: number; at: number; lastSeq: number | null } | null>(null);
   const [restored] = useState(() => {
     try { return { action: loadPending(sessionStorage, pendingKey(projectId)), error: false }; }
     catch { return { action: null, error: true }; }
@@ -53,7 +52,6 @@ export default function Home() {
     if (!snapshot.metadata.hasPendingWrites) {
       const confirmed = readState(snapshot.data());
       setState(confirmed);
-      setTimerPreview((preview) => preview && confirmed.hubs.find((hub) => hub.hub === preview.hub)?.lastSeq === preview.lastSeq ? preview : null);
     }
   }, () => setRuntimeReady(false)), []);
 
@@ -139,9 +137,6 @@ export default function Home() {
       // Persist before any network write. Fail closed when storage is unavailable.
       try { savePending(sessionStorage, pendingKey(projectId), action); }
       catch { setStorageError(true); throw new Error("storage_unavailable"); }
-      if (!pending.current && action.kind === "entry" && now !== null) {
-        setTimerPreview({ hub: action.hub, at: now, lastSeq: hubs.find((hub) => hub.hub === action.hub)?.lastSeq ?? null });
-      }
       pending.current = action;
       await withTimeout(recordAction(db, action), 10_000);
       try { clearPending(sessionStorage, pendingKey(projectId), action.requestId); }
@@ -149,7 +144,6 @@ export default function Home() {
       pending.current = null; setReset(null);
       setNotice(action.kind === "entry" ? `Entrée enregistrée dans le Hub ${action.hub}.` : `Compteur${action.hub ? ` du Hub ${action.hub}` : "s"} remis à zéro.`);
     } catch {
-      setTimerPreview(null);
       setReset(null);
       setNotice("Enregistrement non confirmé. Vérifiez la connexion puis réessayez : le même identifiant évitera un doublon.");
     } finally { lock.current = false; setBusy(false); }
@@ -272,8 +266,8 @@ export default function Home() {
                     <span className="arrow">↗</span>
                   </div>
                   <h2>Hub {h.hub}</h2>
-                  <div className="timer">{elapsed(timerPreview?.hub === h.hub ? timerPreview.at : h.lastAt, now)}</div>
-                  <p>{timerPreview?.hub === h.hub ? "Synchronisation…" : "depuis la dernière entrée"}</p>
+                  <div className="timer">{elapsed(h.lastAt, now)}</div>
+                  <p>{busy && pending.current?.kind === "entry" && pending.current.hub === h.hub ? "Enregistrement en cours…" : "depuis la dernière entrée"}</p>
                   <div className="card-bottom">
                     <span>
                       <strong>{state ? h.count : "—"}</strong> {h.count > 1 ? "entrées" : "entrée"} depuis la réinitialisation

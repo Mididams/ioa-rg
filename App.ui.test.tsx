@@ -32,29 +32,42 @@ async function mount() {
 beforeEach(() => { sessionStorage.clear(); mocks.readTime.mockReset().mockImplementation(async () => Date.now()); vi.useFakeTimers(); vi.setSystemTime(time); mocks.listeners.length = 0; mocks.record.mockReset().mockResolvedValue(undefined); });
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.useRealTimers(); vi.restoreAllMocks(); });
 describe("Interface Rangueil", () => {
-  it("relance immédiatement le chrono pendant une écriture lente puis utilise l'heure confirmée", async () => {
+  it("conserve le chrono confirmé pendant une écriture lente et repart à la confirmation", async () => {
     await mount();
     mocks.record.mockImplementationOnce(() => new Promise(() => {}));
     await act(async () => mocks.listeners[0].callback(snapshot({ ...initialRuntime, hub1LastAt: Timestamp.fromMillis(time - 60000) })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Enregistrer une entrée dans le Hub 1" })));
-    expect(screen.getByText("00:00:00")).toBeTruthy();
-    expect(screen.getByText("Synchronisation…")).toBeTruthy();
+    expect(screen.getByText("00:01:00")).toBeTruthy();
+    expect(screen.getByText("Enregistrement en cours…")).toBeTruthy();
     await act(async () => vi.advanceTimersByTimeAsync(3000));
-    expect(screen.getByText("00:00:03")).toBeTruthy();
+    expect(screen.getByText("00:01:03")).toBeTruthy();
     await act(async () => mocks.listeners[0].callback(snapshot({ ...initialRuntime, hub1LastSeq: 1, hub1LastAt: Timestamp.fromMillis(time + 1000) })));
     expect(screen.getByText("00:00:02")).toBeTruthy();
-    expect(screen.queryByText("Synchronisation…")).toBeNull();
   });
-  it("restaure le chrono confirmé si l'écriture expire", async () => {
+  it("ne remet pas le chrono à zéro si l'écriture expire", async () => {
     await mount();
     mocks.record.mockImplementationOnce(() => new Promise(() => {}));
     await act(async () => mocks.listeners[0].callback(snapshot({ ...initialRuntime, hub1LastAt: Timestamp.fromMillis(time - 60000) })));
     await act(async () => fireEvent.click(screen.getByRole("button", { name: "Enregistrer une entrée dans le Hub 1" })));
-    expect(screen.getByText("00:00:00")).toBeTruthy();
+    expect(screen.getByText("00:01:00")).toBeTruthy();
     await act(async () => vi.advanceTimersByTimeAsync(10001));
     expect(screen.getByText("00:01:10")).toBeTruthy();
     expect(screen.queryByText("Synchronisation…")).toBeNull();
     expect(screen.getByText(/Enregistrement non confirmé/)).toBeTruthy();
+  });
+  it("conserve les deux chronos après actualisation trente secondes après une entrée", async () => {
+    await mount();
+    const confirmed = { ...initialRuntime, hub1LastSeq: 1, hub1LastAt: Timestamp.fromMillis(time), hub2LastSeq: 2, hub2LastAt: Timestamp.fromMillis(time - 60000) };
+    await act(async () => mocks.listeners[0].callback(snapshot(confirmed)));
+    await act(async () => vi.advanceTimersByTimeAsync(30000));
+    expect(screen.getByText("00:00:30")).toBeTruthy();
+    expect(screen.getByText("00:01:30")).toBeTruthy();
+    cleanup(); mocks.listeners.length = 0;
+    await mount();
+    await act(async () => mocks.listeners[0].callback(snapshot(confirmed)));
+    expect(screen.getByText("00:00:30")).toBeTruthy();
+    expect(screen.getByText("00:01:30")).toBeTruthy();
+    expect(mocks.record).not.toHaveBeenCalled();
   });
   it("restaure l'action après rechargement et efface son identifiant uniquement après confirmation", async () => {
     await mount(); mocks.record.mockRejectedValueOnce(new Error("uncertain"));

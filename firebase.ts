@@ -1,6 +1,6 @@
 import { getApp, getApps, initializeApp } from "firebase/app";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
-import { parseReadTime } from "./server-clock";
+import { parseServerDate } from "./server-clock";
 
 const firebaseConfig = {
   apiKey: "AIzaSyCElRJ3hxdVbPqPNGEyk9k4Mk9oYT_C9Nw",
@@ -27,7 +27,7 @@ export async function readServerTime(): Promise<number> {
     signal: AbortSignal.timeout(5000),
   });
   if (!response.ok) throw new Error(`server_time_${response.status}`);
-  return parseReadTime(await response.json());
+  return parseServerDate(response.headers.get("date"));
 }
 
 if (useEmulator) {
