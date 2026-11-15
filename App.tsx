@@ -35,7 +35,7 @@ export default function Home() {
   });
   const [notice, setNotice] = useState(restored.action ? "Une action reste à vérifier après rechargement. Réessayez avec son identifiant conservé." : "");
   const [storageError, setStorageError] = useState(restored.error);
-  const [reset, setReset] = useState<number | null>(null);
+  const [reset, setReset] = useState<0 | null>(null);
   const [now, setNow] = useState<number | null>(null);
   const [clockReady, setClockReady] = useState(false);
   const pending = useRef<Action | null>(restored.action);
@@ -281,13 +281,6 @@ export default function Home() {
                       : "Compteur quotidien en cours de chargement…"}
                   </div>
                 </button>
-                <button
-                  className="reset-one"
-                  disabled={!online || busy || pending.current !== null}
-                  onClick={() => setReset(h.hub)}
-                >
-                  Réinitialiser le compteur
-                </button>
               </article>
             );
           })}
@@ -367,9 +360,7 @@ export default function Home() {
           >
             <span className="modal-icon">↺</span>
             <h2 id="reset-title">
-              {reset
-                ? "Réinitialiser le Hub " + reset + " ?"
-                : "Réinitialiser tous les compteurs ?"}
+              Réinitialiser tous les compteurs ?
             </h2>
             <p>
               La remise à zéro s’appliquera à tous les postes. Les chronomètres
